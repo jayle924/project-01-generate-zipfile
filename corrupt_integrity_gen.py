@@ -1,27 +1,69 @@
-# 3. 무결성 오류 (CRC-32 Error) + AWS-ClamAV 탐지 최적화
-# ZIP 구조는 유지하되 내부 데이터를 오염시키고,
-# ClamAV가 즉각 반응할 수 있는 EICAR 시그니처를 포함합니다.
+import struct
 
-# ClamAV가 감지할 수 있는 표준 안티바이러스 테스트 파일 문자열
-EICAR_SIG = r'X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*'
-
-def create_clamav_corrupt_zip():
-    print("AWS-ClamAV 탐지용 손상 파일(Integrity Error) 생성 중...")
+def create_advanced_corrupt_zip(zip_filename):
+    """
+    AWS-ClamAV의 휴리스틱 엔진을 가장 강력하게 자극하기 위해
+    바이너리 레벨에서 ZIP 구조를 직접 조작하여 생성합니다.
+    (Zip-Slip 경로 조작 + 헤더 길이 변조 + 무결성 오류 + EICAR 통합)
+    """
+    print(f"AWS-ClamAV 휴리스틱 탐지용 [{zip_filename}] 생성 중...")
     
-    with open("corrupt_integrity.zip", "wb") as f:
-        # 1. ZIP 로컬 파일 헤더 시뮬레이션 (PK\x03\x04)
-        f.write(b"PK\x03\x04\x14\x00\x00\x00\x08\x00") 
-        
-        # 2. 데이터 영역에 EICAR 시그니처를 직접 삽입 (탐지 유연성 확보)
-        # 이 문자열이 파일 원본 바이트에 포함되면 ClamAV는 즉각 반응합니다.
-        f.write(EICAR_SIG.encode())
-        
-        # 3. 강제로 데이터를 오염시켜 무결성(CRC) 오류 유발
-        # 시그니처 뒤에 의미 없는 바이트들을 대량 추가하여 정상적인 압축 해제를 방해합니다.
-        f.write(b"\xFF" * 200 + b"\x00" * 200 + b"DAMAGED_INTEGRITY_DATA")
+    # 1. ClamAV가 즉각 반응할 수 있는 EICAR 시그니처 준비
+    EICAR_SIG = r'X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*'
+    
+    # 2. 의도적으로 조작된 파일명 (Zip-Slip 경로 조작 공격 패턴)
+    # 일반적인 라이브러리는 이를 차단하므로 바이너리로 직접 삽입합니다.
+    malicious_filename = b"../../../../../../etc/passwd"
+    
+    try:
+        with open(zip_filename, "wb") as f:
+            # --- ZIP Local File Header (LFH) 직접 구성 ---
+            # Signature (4 bytes): PK\x03\x04
+            f.write(b"PK\x03\x04")
+            # Version needed to extract (2 bytes): 2.0 (20)
+            f.write(struct.pack("<H", 20))
+            # General purpose bit flag (2 bytes): 0
+            f.write(struct.pack("<H", 0))
+            # Compression method (2 bytes): 0 (Stored/No compression)
+            f.write(struct.pack("<H", 0))
+            # Last mod file time/date (4 bytes): 0
+            f.write(struct.pack("<I", 0))
+            
+            # --- 고의적 데이터 파괴 구역 ---
+            # 3. CRC-32 (4 bytes): 의도적으로 틀린 값 삽입 (0xDEADBEEF) -> 무결성(Integrity) 오류 유발
+            f.write(struct.pack("<I", 0xDEADBEEF))
+            # Compressed size (4 bytes): 데이터 길이
+            f.write(struct.pack("<I", len(EICAR_SIG)))
+            # Uncompressed size (4 bytes): 데이터 길이
+            f.write(struct.pack("<I", len(EICAR_SIG)))
+            
+            # 4. Filename length (2 bytes)
+            f.write(struct.pack("<H", len(malicious_filename)))
+            
+            # 5. Extra field length (2 bytes): 최대치(0xFFFF) 설정 
+            # -> 실제 데이터보다 훨씬 큰 길이를 선언하여 헤더 포맷 오류 및 버퍼 오버플로우 분석 유도
+            f.write(struct.pack("<H", 0xFFFF))
+            
+            # --- 데이터 삽입 ---
+            # 6. 조작된 파일명 기록 (Path Traversal 시그니처)
+            f.write(malicious_filename)
+            
+            # 7. 실제 페이로드 기록 (EICAR 바이러스 서명)
+            f.write(EICAR_SIG.encode())
+            
+            # 8. 후속 데이터 채우기 (분석 엔진의 혼란 유도)
+            f.write(b"\x00" * 100 + b"DAMAGED_DATA_BLOCK")
 
-    print("✅ 성공: corrupt_integrity.zip 파일이 생성되었습니다.")
-    print("💡 특징: 압축 구조 손상과 바이러스 시그니처를 결합하여 탐지율을 극대화했습니다.")
+        print(f"✅ 생성 완료: {zip_filename}")
+        print("💡 적용된 휴리스틱 자극 기법:")
+        print("  - Zip-Slip (Path Traversal Detection)")
+        print("  - Oversized Extra Field (Header Formatting Error)")
+        print("  - Invalid CRC-32 (Integrity Check Failure)")
+        print("  - EICAR Signature (Standard Virus Detection)")
+        
+    except Exception as e:
+        print(f"❌ 오류 발생: {e}")
 
 if __name__ == "__main__":
-    create_clamav_corrupt_zip()
+    target_name = "corrupt_integrity.zip"
+    create_advanced_corrupt_zip(target_name)
