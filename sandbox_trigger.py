@@ -24,6 +24,7 @@ def create_simulated_infected_zip(zip_filename, inner_filename):
         
     except Exception as e:
         print(f"❌ 오류 발생: {e}")
+        
 
 if __name__ == "__main__":
     # 설정: 압축 파일 이름과 내부의 '감염된 척하는' 파일 이름
