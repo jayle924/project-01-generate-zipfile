@@ -1,7 +1,6 @@
 import zipfile
 import os
 
-# infected_zip.py 파일을 실행하면 감염 테스트용 압축 파일을 생성합니
 def create_infected_zip(zip_name, infected_file_name):
     # 1. EICAR 테스트 표준 문자열 (백신 엔진이 바이러스로 인식함)
     # 이 문자열은 실제 바이러스가 아니라 표준화된 테스트용 텍스트입니다.
