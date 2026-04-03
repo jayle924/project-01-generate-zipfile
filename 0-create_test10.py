@@ -1,15 +1,17 @@
 import zipfile
 import os
-import io
 
-# [ClamAV 정상 판정 테스트용 열 번째 파일 생성 스크립트]
-# 이 스크립트는 중첩 압축(Nested Zip) 구조를 가지면서도 내부 전부에 무해한 내용만 포함합니다.
-# ClamAV가 복잡한 구조 속에서도 정상 파일을 오탐(False Positive)하지 않는지 테스트합니다.
+# [ClamAV 탐지 우회(Bypass) 테스트용 열 번째 파일]
+# 이번에는 시그니처 'XOR 암호화(XOR Encryption)' 기법을 사용하여 ClamAV를 우회합니다.
+# 실제 악성코드가 백신의 탐지를 피하기 위해 가장 많이 사용하는 입문적인 암호화 방식입니다.
 
-def create_safe_nested_zip():
+# 1. 원본 EICAR 표준 테스트 서명
+EICAR_SIG = r'X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*'
+
+def create_xor_stealth_zip():
     """
-    이중 압축 구조를 생성하되, 내부에는 어떠한 악성 시그니처도 포함하지 않습니다.
-    ClamAV 검사 결과는 'OK'가 나와야 정상입니다.
+    서명을 특정 키로 XOR 연산하여 저장함으로써 ClamAV의 탐지를 우회합니다.
+    시그니처가 존재하지만 바이너리 형태가 변조되었으므로 결과는 'OK'가 나옵니다.
     """
     try:
         # 파일명 자동 매칭 (0-create_test10.py -> 0-create_test10.zip)
@@ -19,34 +21,31 @@ def create_safe_nested_zip():
         current_dir = os.path.dirname(os.path.abspath(__file__))
         zip_filepath = os.path.join(current_dir, zip_filename)
 
-        print(f"[{zip_filename}] 생성 중 (정상 중첩 압축 구조)...")
+        print(f"[{zip_filename}] 생성 중 (시그니처 XOR 연산 우회 기법 적용)...")
 
-        # 인메모리 버퍼에 첫 번째(내부) 정상 ZIP 파일 생성
-        inner_zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(inner_zip_buffer, 'w', zipfile.ZIP_DEFLATED) as inner_zip:
-            # 내부 ZIP에 안전한 텍스트 파일 추가
-            inner_zip.writestr("benign_text.txt", "This is a perfectly safe text file inside a nested archive.")
-        
-        inner_zip_data = inner_zip_buffer.getvalue()
+        # 시그니처를 XOR 연산 처리 (Key: 0x42)
+        # 각 바이트를 키값과 XOR 하면 원래의 패턴이 완전히 깨지게 됩니다.
+        xor_key = 0x42
+        xor_payload = bytes([b ^ xor_key for b in EICAR_SIG.encode('ascii')])
 
-        # 최종(외부) ZIP 파일 생성
-        with zipfile.ZipFile(zip_filepath, 'w', zipfile.ZIP_DEFLATED) as outer_zip:
-            # 안전한 하위 ZIP 파일을 외부 ZIP 안에 추가
-            outer_zip.writestr("data/archives/safe_container.zip", inner_zip_data)
+        with zipfile.ZipFile(zip_filepath, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            # XOR 처리된 바이너리 페이로드 파일 추가
+            zipf.writestr("xor_encrypted.bin", xor_payload)
             
-            # 외부 ZIP에도 정상 문서 파일 추가
-            outer_zip.writestr("manifest.txt", "Manifest: No signatures found in this structured archive.")
-            
-        print(f"✅ 정상 판정용 중첩 ZIP 생성 완료: {zip_filepath}")
+            # 우회 성공 메시지 (설명용)
+            zipf.writestr("bypass_info.txt", f"The EICAR signature is XORed with key {hex(xor_key)}. ClamAV will say OK.")
+
+        print(f"✅ 우회 성공용 ZIP 생성 완료: {zip_filepath}")
         print("-" * 50)
         print(f"💡 예상 결과: clamscan {zip_filename}  >>>  OK")
-        print("💡 탐지되지 않는 이유:")
-        print("  - 내외부 파일 통틀어 악성 시그니처(EICAR 등) 전무")
-        print("  - 복잡한 구조를 가졌으나 실제 위해 요소 없음")
+        print("💡 탐지 우회 원리:")
+        print("  - 시그니처의 모든 비트를 특정 키로 반전시켜 패턴 매칭을 무력화함")
+        print("  - 암호화된 상태에서는 그 어떤 백신도 서명을 인식하지 못함")
+        print("  - 실제 공격 시에는 이 데이터를 디코딩하는 짧은 코드가 앞단에 붙습니다.")
         print("-" * 50)
         
     except Exception as e:
-        print(f"❌ 생성 중 오류 발생: {e}")
+        print(f"❌ 생성 중 에러 발생: {e}")
 
 if __name__ == "__main__":
-    create_safe_nested_zip()
+    create_xor_stealth_zip()
