@@ -9,32 +9,24 @@ import os
 #    ZIP 안에 있는 이 문자열을 찾아내어 감염된 파일로 보고합니다.
 EICAR_STRING = r'X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*'
 
-def create_clamav_test_zip(zip_filename, inner_filename="eicar_test.txt"):
+def create_clamav_test_zip(zip_filepath, inner_filename="eicar_test.txt"):
     """
-    EICAR 테스트 문자열을 포함한 ZIP 파일을 생성합니다.
-    ClamAV는 이 파일을 'Eicar-Test-Signature' 등으로 탐지하게 됩니다.
+    임시 파일을 디스크에 생성하지 않고 메모리에서 직접 ZIP 내부로 데이터를 기록합니다.
+    이 방식은 Windows Defender와 같은 백신이 중간 임시 파일을 삭제하여 생기는 OSError를 방지합니다.
     """
-    # 1. EICAR 문자열을 가진 임시 텍스트 파일 생성
-    with open(inner_filename, "w") as f:
-        f.write(EICAR_STRING)
-    
-    # 2. ZIP 파일로 압축 (ClamAV는 압축 해제 후 내부 시그니처를 검사함)
-    with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        zipf.write(inner_filename)
-        
-    # 3. 임시 파일 삭제
-    os.remove(inner_filename)
-    print(f"성공적으로 생성됨: {zip_filename}")
+    try:
+        with zipfile.ZipFile(zip_filepath, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            # writestr: 디스크에 파일을 쓰지 않고 바로 압축 파일 내부에 데이터 기록
+            zipf.writestr(inner_filename, EICAR_STRING.encode('ascii'))
+        print(f"성공적으로 생성됨: {zip_filepath}")
+        print(f"내부 포함 파일: {inner_filename}")
+    except Exception as e:
+        print(f"파일 생성 중 오류 발생: {e}")
 
 if __name__ == "__main__":
-    # 스크립트 파일이 위치한 디렉토리 절대 경로를 가져옵니다.
-    # 이렇게 하면 어느 디렉토리에서 실행하든 스크립트와 같은 곳에 파일이 생깁니다.
+    # 스크립트 위치 기준 절대 경로 설정
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    
-    # 생성될 파일 경로를 절대 경로로 설정
     target_zip = os.path.join(current_dir, "clamav_test_eicar.zip")
     
-    # 임시 파일도 같은 폴더 내에 생성되도록 설정
-    temp_inner_file = os.path.join(current_dir, "eicar_test.txt")
-    
-    create_clamav_test_zip(target_zip, temp_inner_file)
+    # 실행
+    create_clamav_test_zip(target_zip, "eicar_test.txt")
